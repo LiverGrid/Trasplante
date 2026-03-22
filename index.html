@@ -420,10 +420,16 @@ label.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;l
         <div class="form-group"><label class="fl">Diagnóstico</label>
           <select class="fi" id="f-diag">
             <option value="">—</option>
-            <option>Cirrosis hepática Child C</option><option>Hepatitis B crónica</option>
-            <option>Hepatitis C crónica</option><option>CBP estadio IV</option>
-            <option>EHNA / cirrosis</option><option>Falla hepática aguda</option>
-            <option>Hepatocarcinoma</option><option>Colangiocarcinoma</option><option>Otra</option>
+            <option>VHC</option>
+            <option>VHB</option>
+            <option>Falla hepática aguda</option>
+            <option>Alcohol</option>
+            <option>Hepatitis autoinmune</option>
+            <option>HCC</option>
+            <option>CEP</option>
+            <option>CBP</option>
+            <option>MASLD</option>
+            <option>Otros</option>
           </select>
         </div>
         <div class="form-group"><label class="fl">Teléfono</label><input class="fi" type="text" id="f-tel" placeholder="+54 11 …"></div>
@@ -536,7 +542,7 @@ function todayStr(){return new Date().toISOString().split('T')[0];}
 function mk(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
 
 // ── ESTADO ────────────────────────────────────────────────────────
-var patients=[], editId=null, renewId=null, filterBlood='ALL', filterView='todos';
+var patients=[], patientsPerm=[], editId=null, renewId=null, filterBlood='ALL', filterView='todos';
 
 // ── API (fetch puro — sin sandbox de Apps Script) ─────────────────
 function api(accion, params){
@@ -566,6 +572,7 @@ function aplicarBajas(lista){
   });
 }
 
+
 // ── SYNC ──────────────────────────────────────────────────────────
 function syncData(){
   if(!SCRIPT_URL){
@@ -578,8 +585,10 @@ function syncData(){
   document.getElementById('sync-label').textContent='Sincronizando…';
   api('listar',{})
     .then(function(data){
-      patients=data.pacientes||[];
-      aplicarBajas(patients);
+      var todos = data.pacientes||[];
+      aplicarBajas(todos);
+      patients = todos.filter(function(p){return p.estado !== 'Eliminado' && p.estado !== 'Baja permanente';});
+      patientsPerm = todos.filter(function(p){return p.estado === 'Baja permanente';});
       renderAll();
       document.getElementById('sync-label').textContent=
         new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
@@ -660,9 +669,13 @@ function renderCards(){
   var list=patients.slice();
   if(q)list=list.filter(function(p){return(p.apellido+' '+p.nombre).toLowerCase().indexOf(q)>=0||p.dni.indexOf(q)>=0;});
   if(filterBlood!=='ALL')list=list.filter(function(p){return p.grupo===filterBlood;});
-  if(filterView==='prox')list=list.filter(function(p){return p.estado==='Activo'&&daysUntil(calcExpiry(p.fecha_renovacion,p.meld))>=0&&daysUntil(calcExpiry(p.fecha_renovacion,p.meld))<=7;});
-  if(filterView==='venc')list=list.filter(function(p){return p.estado==='Baja transitoria'&&p.baja_motivo==='vencimiento';});
-  if(filterView==='baja')list=list.filter(function(p){return p.estado==='Baja transitoria';});
+  // Vista baja permanente usa array separado
+  if(filterView==='perm'){ list=patientsPerm.slice(); }
+  else {
+    if(filterView==='prox')list=list.filter(function(p){return p.estado==='Activo'&&daysUntil(calcExpiry(p.fecha_renovacion,p.meld))>=0&&daysUntil(calcExpiry(p.fecha_renovacion,p.meld))<=7;});
+    if(filterView==='venc')list=list.filter(function(p){return p.estado==='Baja transitoria'&&p.baja_motivo==='vencimiento';});
+    if(filterView==='baja')list=list.filter(function(p){return p.estado==='Baja transitoria';});
+  }
   list.sort(function(a,b){
     var ap=a.estado==='Baja permanente',bp=b.estado==='Baja permanente';
     if(ap&&!bp)return 1;if(!ap&&bp)return -1;
@@ -938,15 +951,19 @@ function doInac(id,estado,motivo){
 }
 function eliminarPaciente(id){
   if(!confirm('¿Confirmás la eliminación del paciente? Esta acción quedará registrada en el sistema.'))return;
+  // Buscar en ambos arrays
   var idx=patients.findIndex(function(p){return p.id===id;});
-  if(idx===-1)return;
-  var pt=patients[idx];
-  var removed=patients.splice(idx,1)[0];
+  var idxP=patientsPerm.findIndex(function(p){return p.id===id;});
+  var arr = idx>=0 ? patients : patientsPerm;
+  var realIdx = idx>=0 ? idx : idxP;
+  if(realIdx===-1)return;
+  var pt=arr[realIdx];
+  var removed=arr.splice(realIdx,1)[0];
   renderAll();
   showToast(pt.apellido+' eliminado','ok');
   api('eliminar',{id:id})
     .catch(function(err){
-      patients.splice(idx,0,removed);
+      arr.splice(realIdx,0,removed);
       renderAll();
       showToast('Error al eliminar: '+err.message,'err');
     });
@@ -1024,6 +1041,7 @@ on('vp-todos','click', function(){setView('todos');});
 on('vp-prox', 'click', function(){setView('prox');});
 on('vp-venc', 'click', function(){setView('venc');});
 on('vp-baja', 'click', function(){setView('baja');});
+on('vp-perm', 'click', function(){setView('perm');});
 on('sort-sel', 'change', renderAll);
 on('toggle-email','click',function(){
   var tog=document.getElementById('toggle-email');
