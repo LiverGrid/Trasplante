@@ -115,6 +115,8 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
 /* CARDS */
 .cards-container{padding:0 28px 6px;display:flex;flex-direction:column;gap:6px;}
 .patient-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);display:grid;grid-template-columns:5px 1fr auto;overflow:visible;transition:box-shadow .15s,transform .1s;box-shadow:var(--shadow);}
+.patient-card-wrap{border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);margin-bottom:0;}
+.patient-card-wrap .patient-card{border-radius:0;box-shadow:none;margin-bottom:0;}
 .patient-card:hover{box-shadow:0 4px 20px rgba(15,31,61,.12);transform:translateY(-1px);}
 .card-body-activo{padding:13px 18px;display:grid;grid-template-columns:1fr 72px 100px 100px 130px;gap:0 20px;align-items:center;}
 .card-body-venc{padding:13px 18px;display:grid;grid-template-columns:1fr auto;gap:0 24px;align-items:center;}
@@ -301,6 +303,31 @@ label.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;l
   box-shadow:0 1px 3px rgba(0,0,0,.2);
 }
 .toggle-switch.on::after { transform:translateX(18px); }
+
+.card-contact {
+  display: none;
+  padding: 8px 18px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+  display: none;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.card-contact.open { display: flex; }
+.contact-item {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--muted);
+}
+.contact-item a { color: var(--blue); text-decoration: none; font-weight: 500; }
+.contact-item a:hover { text-decoration: underline; }
+.contact-icon { font-size: 13px; opacity: .7; flex-shrink: 0; }
+.btn-contact {
+  background: none; border: none; cursor: pointer;
+  color: var(--faint); font-size: 13px; padding: 4px 6px;
+  border-radius: 4px; transition: all .13s; line-height: 1;
+}
+.btn-contact:hover { background: var(--surface2); color: var(--muted); }
+.btn-contact.open { color: var(--blue); }
 
 @media(max-width:720px){
   .card-body-activo{grid-template-columns:1fr auto;}
@@ -783,6 +810,24 @@ function renderCards(){
         act.appendChild(makeBtn(bcls,btxt,function(){openRenew(pid);}));
       }
       act.appendChild(makeBtn('btn btn-edit','✎',function(){openEdit(pid);}));
+      // Botón contacto — solo si tiene tel o email
+      if(pt.tel||pt.email||pt.obs){
+        (function(pid2,pt2){
+          var contactBtn=mk('button','btn-contact','▾');
+          contactBtn.title='Ver datos de contacto';
+          contactBtn.addEventListener('click',function(e){
+            e.stopPropagation();
+            var wrap=contactBtn.closest('.patient-card-wrap');
+            if(!wrap)return;
+            var panel=wrap.querySelector('.card-contact');
+            if(!panel)return;
+            panel.classList.toggle('open');
+            contactBtn.classList.toggle('open');
+            contactBtn.textContent=panel.classList.contains('open')?'▴':'▾';
+          });
+          act.appendChild(contactBtn);
+        })(pid,pt);
+      }
       // Botón eliminar para todos los pacientes
       (function(pid2){
         var delBtn=makeBtn('btn btn-inac','✕',function(){eliminarPaciente(pid2);});
@@ -807,7 +852,37 @@ function renderCards(){
         iw.appendChild(ib);iw.appendChild(im);act.appendChild(iw);
       }
       card.appendChild(act);
-      cont.appendChild(card);
+
+      // Contact panel
+      var wrap2=mk('div','patient-card-wrap');
+      wrap2.appendChild(card);
+      if(pt.tel||pt.email||pt.obs){
+        var contactPanel=mk('div','card-contact');
+        if(pt.tel){
+          var ti=mk('div','contact-item');
+          ti.appendChild(mk('span','contact-icon','📞'));
+          var ta=document.createElement('a');
+          ta.href='tel:'+pt.tel; ta.textContent=pt.tel;
+          ti.appendChild(ta);
+          contactPanel.appendChild(ti);
+        }
+        if(pt.email){
+          var ei=mk('div','contact-item');
+          ei.appendChild(mk('span','contact-icon','✉'));
+          var ea=document.createElement('a');
+          ea.href='mailto:'+pt.email; ea.textContent=pt.email;
+          ei.appendChild(ea);
+          contactPanel.appendChild(ei);
+        }
+        if(pt.obs){
+          var oi=mk('div','contact-item');
+          oi.appendChild(mk('span','contact-icon','💬'));
+          oi.appendChild(mk('span',null,pt.obs));
+          contactPanel.appendChild(oi);
+        }
+        wrap2.appendChild(contactPanel);
+      }
+      cont.appendChild(wrap2);
     });
     wrap.appendChild(cont);
   });
@@ -1094,4 +1169,4 @@ if(savedUrl){
 
 </script>
 </body>
-</html>s
+</html>
