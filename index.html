@@ -715,14 +715,20 @@ function renderNotasPanel(idPaciente, container) {
       delBtn.title = 'Eliminar nota';
       (function(nid, pid) {
         delBtn.addEventListener('click', function() {
+          // Optimistic delete
+          var arr3 = notesCache[pid] || [];
+          var idx4 = arr3.findIndex(function(n){ return n.id === nid; });
+          var removed2 = idx4 >= 0 ? arr3.splice(idx4, 1)[0] : null;
+          renderNotasPanel(pid, container);
+          actualizarIndicadorNotas(pid);
           api('eliminarNota', {id_nota: nid})
-            .then(function() {
-              cargarNotas(pid, function() {
-                renderNotasPanel(pid, container);
-                actualizarIndicadorNotas(pid);
-              });
-            })
-            .catch(function(err) { showToast('Error: ' + err.message, 'err'); });
+            .catch(function(err) {
+              // Revertir
+              if (removed2 && idx4 >= 0) arr3.splice(idx4, 0, removed2);
+              renderNotasPanel(pid, container);
+              actualizarIndicadorNotas(pid);
+              showToast('Error al eliminar nota: ' + err.message, 'err');
+            });
         });
       })(nota.id, idPaciente);
       item.appendChild(delBtn);
@@ -770,18 +776,49 @@ function renderNotasPanel(idPaciente, container) {
         if (!d || d < 1) { showToast('Ingresá la cantidad de días', 'err'); return; }
         params.dias = d;
       }
+      // Optimistic update — agregar nota localmente de inmediato
+      var tempId = 'TEMP-' + Date.now();
+      var hoy2 = new Date().toISOString().split('T')[0];
+      var fcStr = '';
+      if (params.caduca === 'dias' && params.dias) {
+        var fc2 = new Date(); fc2.setDate(fc2.getDate() + parseInt(params.dias));
+        fcStr = fc2.toISOString().split('T')[0];
+      }
+      var tempNota = {
+        id: tempId,
+        id_paciente: params.id_paciente,
+        texto: params.texto,
+        fecha: hoy2,
+        caduca: params.caduca,
+        fecha_caducidad: fcStr,
+        activa: true,
+      };
+      if (!notesCache[params.id_paciente]) notesCache[params.id_paciente] = [];
+      notesCache[params.id_paciente].unshift(tempNota);
+      ta.value = '';
+      sel.value = 'nunca';
+      diasInput.style.display = 'none';
+      renderNotasPanel(params.id_paciente, container);
+      actualizarIndicadorNotas(params.id_paciente);
+      showToast('Nota guardada', 'ok');
+
+      // Sync con servidor en segundo plano
       api('agregarNota', params)
-        .then(function() {
-          ta.value = '';
-          sel.value = 'nunca';
-          diasInput.style.display = 'none';
-          cargarNotas(pid, function() {
-            renderNotasPanel(pid, container);
-            actualizarIndicadorNotas(pid);
-          });
-          showToast('Nota guardada', 'ok');
+        .then(function(data) {
+          // Reemplazar temp con ID real
+          var arr = notesCache[params.id_paciente] || [];
+          var idx2 = arr.findIndex(function(n){ return n.id === tempId; });
+          if (idx2 >= 0 && data.id) arr[idx2].id = data.id;
         })
-        .catch(function(err) { showToast('Error: ' + err.message, 'err'); });
+        .catch(function(err) {
+          // Revertir si falla
+          var arr2 = notesCache[params.id_paciente] || [];
+          var idx3 = arr2.findIndex(function(n){ return n.id === tempId; });
+          if (idx3 >= 0) arr2.splice(idx3, 1);
+          renderNotasPanel(params.id_paciente, container);
+          actualizarIndicadorNotas(params.id_paciente);
+          showToast('Error al guardar nota: ' + err.message, 'err');
+        });
     });
   })(idPaciente);
 
@@ -1269,6 +1306,28 @@ function savePatient(){
   var dni=document.getElementById('f-dni').value.trim(),grupo=document.getElementById('f-grupo').value;
   var meld=parseInt(document.getElementById('f-meld').value);
   if(!ap||!nm||!dni||!grupo||!meld){showToast('Completá los campos requeridos (*)','err');return;}
+
+  // Verificar duplicados (solo en alta, no en edición)
+  if(!editId){
+    var duplicados = patients.concat(patientsPerm).filter(function(p){
+      var mismoDni = String(p.dni).trim() === String(dni).trim();
+      var mismoNombre = p.apellido.trim().toLowerCase() === ap.trim().toLowerCase()
+                     && p.nombre.trim().toLowerCase()   === nm.trim().toLowerCase();
+      return mismoDni || mismoNombre;
+    });
+    if(duplicados.length > 0){
+      var msg = '⚠ Ya existe un paciente con ';
+      var porDni    = duplicados.filter(function(p){return String(p.dni).trim()===String(dni).trim();});
+      var porNombre = duplicados.filter(function(p){
+        return p.apellido.trim().toLowerCase()===ap.trim().toLowerCase()
+            && p.nombre.trim().toLowerCase()===nm.trim().toLowerCase();
+      });
+      if(porDni.length>0)    msg += 'el mismo DNI (' + porDni[0].apellido + ', ' + porDni[0].nombre + ')';
+      if(porNombre.length>0) msg += (porDni.length>0?' y ':' ') + 'el mismo nombre';
+      msg += '. ¿Confirmás que es un paciente diferente?';
+      if(!confirm(msg)) return;
+    }
+  }
   var params={apellido:ap,nombre:nm,dni:dni,grupo:grupo,meld:meld,
     spa_meld:parseInt(document.getElementById('f-spa-meld').value)||meld,
     ingreso:document.getElementById('f-ingreso').value,
