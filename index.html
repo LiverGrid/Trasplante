@@ -669,12 +669,21 @@ var notesCache = {}; // id_paciente → [notas]
 
 function cargarNotas(idPaciente, callback) {
   if (!idPaciente) return;
+  // Si ya están en cache, usar directamente sin llamada al servidor
+  if (notesCache[idPaciente] !== undefined) {
+    if (callback) callback(notesCache[idPaciente]);
+    return;
+  }
+  // Solo llamar al servidor si no están en cache
   api('listarNotas', {id_paciente: idPaciente})
     .then(function(data) {
       notesCache[idPaciente] = data.notas || [];
       if (callback) callback(notesCache[idPaciente]);
     })
-    .catch(function(err) { showToast('Error al cargar notas: ' + err.message, 'err'); });
+    .catch(function(err) {
+      notesCache[idPaciente] = [];
+      if (callback) callback([]);
+    });
 }
 
 function renderNotasPanel(idPaciente, container) {
@@ -891,6 +900,14 @@ function syncData(){
       aplicarBajas(todos);
       patients = todos.filter(function(p){return p.estado !== 'Eliminado' && p.estado !== 'Baja permanente';});
       patientsPerm = todos.filter(function(p){return p.estado === 'Baja permanente';});
+      // Pre-poblar cache de notas — vienen en la misma respuesta, sin llamada extra
+      if(data.notas && data.notas.length >= 0){
+        notesCache = {};
+        data.notas.forEach(function(n){
+          if(!notesCache[n.id_paciente]) notesCache[n.id_paciente] = [];
+          notesCache[n.id_paciente].push(n);
+        });
+      }
       renderAll();
       document.getElementById('sync-label').textContent=
         new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
