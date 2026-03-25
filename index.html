@@ -304,31 +304,25 @@ label.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;l
 }
 .toggle-switch.on::after { transform:translateX(18px); }
 
+.contact-inline {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  margin-top: 4px; align-items: center;
+}
+.contact-inline a {
+  font-size: 11px; color: var(--muted);
+  text-decoration: none; display: flex; align-items: center; gap: 4px;
+  transition: color .13s;
+}
+.contact-inline a:hover { color: var(--blue); }
+.contact-inline .ci-icon { font-size: 11px; opacity: .6; }
+
 .card-contact {
   display: none;
-  padding: 8px 18px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface2);
-  display: none;
-  gap: 20px;
-  flex-wrap: wrap;
+  padding: 10px 18px 12px;
 }
-.card-contact.open { display: flex; }
-.contact-item {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 12px; color: var(--muted);
-}
-.contact-item a { color: var(--blue); text-decoration: none; font-weight: 500; }
-.contact-item a:hover { text-decoration: underline; }
-.contact-icon { font-size: 13px; opacity: .7; flex-shrink: 0; }
-.btn-contact {
-  background: none; border: 1px solid var(--border); cursor: pointer;
-  color: var(--faint); font-size: 11px; padding: 2px 7px;
-  border-radius: 4px; transition: all .13s; line-height: 1.4;
-  display: inline-block; margin-top: 5px;
-}
-.btn-contact:hover { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
-.btn-contact.open { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
+.card-contact.open { display: block; }
 
 .note-indicator {
   display: inline-flex; align-items: center; gap: 4px;
@@ -345,14 +339,12 @@ label.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;l
   background: var(--blue); flex-shrink: 0;
 }
 .notes-section {
-  border-top: 1px solid var(--border);
-  background: var(--surface2);
-  padding: 12px 18px;
+  padding: 0;
 }
 .notes-section-title {
   font-size: 11px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .07em;
-  color: var(--muted); margin-bottom: 10px;
+  color: var(--muted); margin-bottom: 8px;
   display: flex; align-items: center; justify-content: space-between;
 }
 .note-item {
@@ -381,16 +373,14 @@ label.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;l
 }
 .note-del:hover { background: var(--red-bg); color: var(--red); }
 .note-form {
-  margin-top: 10px; background: white;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  margin-top: 8px;
 }
 .note-form textarea {
   width: 100%; border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm); padding: 8px 10px;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px;
-  color: var(--text); resize: none; min-height: 60px;
-  transition: border-color .14s;
+  border-radius: var(--radius-sm); padding: 7px 10px;
+  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px;
+  color: var(--text); resize: none; min-height: 48px;
+  transition: border-color .14s; background: white;
 }
 .note-form textarea:focus { outline: none; border-color: var(--blue); }
 .note-form-row {
@@ -1052,22 +1042,28 @@ function renderCards(){
       if(pt.diagnostico){var d2=mk('span',null,pt.diagnostico);d2.style.cssText='font-size:11px;color:var(--faint)';tags.appendChild(d2);}
       nc.appendChild(tags);
 
-      // Botón contacto inline junto al nombre
-      if(pt.tel||pt.email||pt.obs){
+      // ··· button toggles notes panel
+      (function(){
         var contactBtn=mk('button','btn-contact','···');
-        contactBtn.title='Ver datos de contacto';
-        contactBtn.style.cssText='font-size:14px;font-weight:700;letter-spacing:.05em;margin-top:4px;padding:1px 7px;border-radius:4px;';
+        contactBtn.title='Notas';
+        contactBtn.style.cssText='background:none;border:1px solid var(--border);cursor:pointer;color:var(--faint);font-size:12px;font-weight:700;letter-spacing:.05em;padding:1px 8px;border-radius:4px;margin-top:5px;transition:all .13s;display:inline-block';
         contactBtn.addEventListener('click',function(e){
           e.stopPropagation();
           var wrap=contactBtn.closest('.patient-card-wrap');
           if(!wrap)return;
           var panel=wrap.querySelector('.card-contact');
           if(!panel)return;
-          panel.classList.toggle('open');
-          contactBtn.classList.toggle('open');
+          var isOpen=panel.classList.toggle('open');
+          contactBtn.style.color=isOpen?'var(--blue)':'var(--faint)';
+          contactBtn.style.borderColor=isOpen?'var(--blue)':'var(--border)';
+          contactBtn.style.background=isOpen?'var(--blue-light)':'none';
+          if(isOpen){
+            var ns=panel.querySelector('.notes-section');
+            if(ns)renderNotasPanel(pt.id,ns);
+          }
         });
         nc.appendChild(contactBtn);
-      }
+      })();
 
       // Indicador de notas
       (function(pid3){
@@ -1176,33 +1172,29 @@ function renderCards(){
       // Contact panel
       var wrap2=mk('div','patient-card-wrap');
       wrap2.appendChild(card);
-      if(pt.tel||pt.email||pt.obs){
-        var contactPanel=mk('div','card-contact');
-        var ti=mk('div','contact-item');
-        ti.appendChild(mk('span','contact-icon','📞'));
-        if(pt.tel && String(pt.tel).trim() !== '' && String(pt.tel).indexOf('#')<0){
-          var ta=document.createElement('a');
-          ta.href='tel:'+pt.tel; ta.textContent=pt.tel;
-          ti.appendChild(ta);
-        } else {
-          ti.appendChild(mk('span',null,'—'));
+      // Contact info inline in name col — always visible
+      if(pt.tel||pt.email){
+        var ciRow=mk('div','contact-inline');
+        if(pt.tel&&String(pt.tel).trim()!==''&&String(pt.tel).indexOf('#')<0){
+          var ta2=document.createElement('a');
+          ta2.href='tel:'+pt.tel;
+          ta2.appendChild(mk('span','ci-icon','📞'));
+          ta2.appendChild(document.createTextNode(pt.tel));
+          ciRow.appendChild(ta2);
         }
-        contactPanel.appendChild(ti);
         if(pt.email){
-          var ei=mk('div','contact-item');
-          ei.appendChild(mk('span','contact-icon','✉'));
-          var ea=document.createElement('a');
-          ea.href='mailto:'+pt.email; ea.textContent=pt.email;
-          ei.appendChild(ea);
-          contactPanel.appendChild(ei);
+          var ea2=document.createElement('a');
+          ea2.href='mailto:'+pt.email;
+          ea2.appendChild(mk('span','ci-icon','✉'));
+          ea2.appendChild(document.createTextNode(pt.email));
+          ciRow.appendChild(ea2);
         }
-        if(pt.obs){
-          var oi=mk('div','contact-item');
-          oi.appendChild(mk('span','contact-icon','💬'));
-          oi.appendChild(mk('span',null,pt.obs));
-          contactPanel.appendChild(oi);
-        }
-        // Notes section inside contact panel
+        nc.appendChild(ciRow);
+      }
+
+      if(true){ // always create notes panel
+        var contactPanel=mk('div','card-contact');
+        // Notes panel - compact, only notes
         var notesSection = mk('div', 'notes-section');
         contactPanel.appendChild(notesSection);
         // Will be populated when panel opens
@@ -1227,15 +1219,15 @@ function renderCards(){
 
         // Add ··· button for notes-only patients
         var noteOnlyBtn = mk('button', 'btn-contact', '···');
-        noteOnlyBtn.style.cssText = 'font-size:14px;font-weight:700;letter-spacing:.05em;margin-top:4px;padding:1px 7px;border-radius:4px;';
+        noteOnlyBtn.style.cssText = 'background:none;border:1px solid var(--border);cursor:pointer;color:var(--faint);font-size:12px;font-weight:700;letter-spacing:.05em;padding:1px 8px;border-radius:4px;margin-top:5px;transition:all .13s;display:inline-block';
         noteOnlyBtn.title = 'Notas';
         noteOnlyBtn.addEventListener('click', function(e) {
           e.stopPropagation();
-          contactPanel2.classList.toggle('open');
-          noteOnlyBtn.classList.toggle('open');
-          if (contactPanel2.classList.contains('open')) {
-            renderNotasPanel(pid, notesSection2);
-          }
+          var isOpen2=contactPanel2.classList.toggle('open');
+          noteOnlyBtn.style.color=isOpen2?'var(--blue)':'var(--faint)';
+          noteOnlyBtn.style.borderColor=isOpen2?'var(--blue)':'var(--border)';
+          noteOnlyBtn.style.background=isOpen2?'var(--blue-light)':'none';
+          if(isOpen2){ renderNotasPanel(pid, notesSection2); }
         });
         nc.appendChild(noteOnlyBtn);
 
