@@ -1121,7 +1121,9 @@ function renderCards(){
         vw.appendChild(nc);
         var panel=mk('div','baja-venc-panel');
         function makeDato(v,l,ec){var d=mk('div','baja-venc-dato');d.appendChild(mk('div','baja-venc-val'+(ec?' '+ec:''),v));d.appendChild(mk('div','baja-venc-label',l));return d;}
-        panel.appendChild(makeDato(String(pt.meld),'MELD previo',meldClass(pt.meld)));
+        var meldEfBV=pt.spa_meld&&pt.spa_meld>pt.meld?pt.spa_meld:pt.meld;
+        var meldTextBV=pt.spa_meld&&pt.spa_meld!==pt.meld?pt.meld+'/'+pt.spa_meld:String(pt.meld);
+        panel.appendChild(makeDato(meldTextBV,'MELD previo',meldClass(meldEfBV)));
         panel.appendChild(mk('div','baja-venc-sep'));
         panel.appendChild(makeDato(fmtDate(pt.fecha_vencio),'Venció el'));
         panel.appendChild(mk('div','baja-venc-sep'));
@@ -1133,14 +1135,11 @@ function renderCards(){
         var mc2=mk('div','p-meld-col');
         var meldEfectivo=pt.spa_meld&&pt.spa_meld>pt.meld?pt.spa_meld:pt.meld;
         if(pt.spa_meld&&pt.spa_meld!==pt.meld){
-          // Show combined: effective/real or real/spa depending on which is higher
+          // "17/30 (spa)" — misma línea, mismo tamaño y color
           var meldDisplay=mk('div','p-meld-val '+meldClass(meldEfectivo));
-          var mainNum=document.createTextNode(String(meldEfectivo));
-          meldDisplay.appendChild(mainNum);
+          meldDisplay.textContent=pt.meld+'/'+pt.spa_meld;
           mc2.appendChild(meldDisplay);
-          var meldSub=mk('div','p-meld-sub');
-          meldSub.textContent=(pt.spa_meld>pt.meld?'real: '+pt.meld:'SPA: '+pt.spa_meld);
-          mc2.appendChild(meldSub);
+          mc2.appendChild(mk('div','p-meld-sub','(spa)'));
         } else {
           mc2.appendChild(mk('div','p-meld-val '+meldClass(pt.meld),String(pt.meld)));
         }
@@ -1474,8 +1473,14 @@ function doInac(id,estado,motivo){
       showToast('Error al guardar: '+err.message,'err');
     });
 }
-// Set de IDs eliminados en esta sesión — persiste entre syncs
-var eliminadosLocal = {};
+// IDs eliminados — persiste en localStorage entre recargas
+var eliminadosLocal = (function(){
+  try { return JSON.parse(localStorage.getItem('eliminadosLocal')||'{}'); } catch(e){ return {}; }
+})();
+
+function guardarEliminados(){
+  try { localStorage.setItem('eliminadosLocal', JSON.stringify(eliminadosLocal)); } catch(e){}
+}
 
 function eliminarPaciente(id){
   if(!confirm('¿Confirmás la eliminación del paciente? Esta acción quedará registrada en el sistema.'))return;
@@ -1487,16 +1492,18 @@ function eliminarPaciente(id){
   var pt=arr[realIdx];
   var removed=arr.splice(realIdx,1)[0];
   eliminadosLocal[id] = true;
+  guardarEliminados();
   renderAll();
   showToast(pt.apellido+' eliminado','ok');
   api('eliminar',{id:id})
     .then(function(){
-      // Confirmar que quedó eliminado en el servidor
       eliminadosLocal[id] = true;
+      guardarEliminados();
     })
     .catch(function(err){
       // Revertir si falla
       delete eliminadosLocal[id];
+      guardarEliminados();
       arr.splice(realIdx,0,removed);
       renderAll();
       showToast('Error al eliminar: '+err.message,'err');
