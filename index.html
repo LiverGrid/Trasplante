@@ -525,6 +525,18 @@ label.fl{display:block;font-size:11px;font-weight:700;text-transform:uppercase;l
         </div>
       </div>
       <div class="form-row">
+        <div class="form-group">
+          <label class="fl">Fecha último laboratorio</label>
+          <input class="fi" type="date" id="f-fecha-lab">
+          <div class="help-text">Si se carga, se calcula el vencimiento automáticamente</div>
+        </div>
+        <div class="form-group">
+          <label class="fl">Fecha próximo vencimiento</label>
+          <input class="fi" type="date" id="f-fecha-venc">
+          <div class="help-text">Tiene prioridad sobre el laboratorio si se ingresa</div>
+        </div>
+      </div>
+      <div class="form-row">
         <div class="form-group"><label class="fl">Diagnóstico</label>
           <select class="fi" id="f-diag">
             <option value="">—</option>
@@ -992,8 +1004,10 @@ function renderCards(){
     var ap=a.estado==='Baja permanente',bp=b.estado==='Baja permanente';
     if(ap&&!bp)return 1;if(!ap&&bp)return -1;
     if(sort==='apellido')return a.apellido.localeCompare(b.apellido,'es');
-    if(sort==='meld-desc')return b.meld-a.meld;
-    if(sort==='meld-asc')return a.meld-b.meld;
+    var ma=Math.max(a.meld||0,a.spa_meld||0);
+    var mb=Math.max(b.meld||0,b.spa_meld||0);
+    if(sort==='meld-desc')return mb-ma;
+    if(sort==='meld-asc')return ma-mb;
     return 0;
   });
   var wrap=document.getElementById('content');
@@ -1113,8 +1127,19 @@ function renderCards(){
       } else {
         body.appendChild(nc);
         var mc2=mk('div','p-meld-col');
-        mc2.appendChild(mk('div','p-meld-val '+meldClass(pt.meld),String(pt.meld)));
-        if(pt.spa_meld&&pt.spa_meld!==pt.meld)mc2.appendChild(mk('div','p-meld-sub','SPA: '+pt.spa_meld));
+        var meldEfectivo=pt.spa_meld&&pt.spa_meld>pt.meld?pt.spa_meld:pt.meld;
+        if(pt.spa_meld&&pt.spa_meld!==pt.meld){
+          // Show combined: effective/real or real/spa depending on which is higher
+          var meldDisplay=mk('div','p-meld-val '+meldClass(meldEfectivo));
+          var mainNum=document.createTextNode(String(meldEfectivo));
+          meldDisplay.appendChild(mainNum);
+          mc2.appendChild(meldDisplay);
+          var meldSub=mk('div','p-meld-sub');
+          meldSub.textContent=(pt.spa_meld>pt.meld?'real: '+pt.meld:'SPA: '+pt.spa_meld);
+          mc2.appendChild(meldSub);
+        } else {
+          mc2.appendChild(mk('div','p-meld-val '+meldClass(pt.meld),String(pt.meld)));
+        }
         mc2.appendChild(mk('div','p-meld-label','MELD'));
         body.appendChild(mc2);
       }
@@ -1278,6 +1303,8 @@ function openAdd(){
   document.getElementById('f-grupo').value='';document.getElementById('f-spa').value='No';
   document.getElementById('f-diag').value='';document.getElementById('f-meld').value='';
   document.getElementById('f-spa-meld').value='';document.getElementById('f-ingreso').value=todayStr();
+  document.getElementById('f-fecha-lab').value='';
+  document.getElementById('f-fecha-venc').value='';
   document.getElementById('modal-patient').classList.add('open');
 }
 function openEdit(id){
@@ -1292,6 +1319,8 @@ function openEdit(id){
   document.getElementById('f-spa').value=pt.spa||'No';document.getElementById('f-diag').value=pt.diagnostico||'';
   document.getElementById('f-tel').value=pt.tel||'';document.getElementById('f-email').value=pt.email||'';
   document.getElementById('f-obs').value=pt.obs||'';
+  document.getElementById('f-fecha-lab').value='';
+  document.getElementById('f-fecha-venc').value='';
   document.getElementById('modal-patient').classList.add('open');
 }
 function closePatient(){document.getElementById('modal-patient').classList.remove('open');}
@@ -1341,6 +1370,25 @@ function savePatient(){
       if(!confirm(msg)) return;
     }
   }
+  var fechaLab  = document.getElementById('f-fecha-lab').value;
+  var fechaVenc = document.getElementById('f-fecha-venc').value;
+  // Calcular fecha_renovacion:
+  // 1) Si hay fecha de próximo vencimiento: calcular fecha_renovacion hacia atrás
+  //    (guardamos directamente la fecha_renovacion = fechaVenc - intervalo)
+  //    Más simple: guardamos fecha_venc_manual y el backend la usa directo
+  // 2) Si hay fecha de laboratorio: usar como fecha_renovacion
+  // 3) Si no hay ninguna: usar hoy
+  var meldVal = parseInt(document.getElementById('f-meld').value)||meld;
+  var fechaRenovacion = todayStr();
+  if(fechaVenc){
+    // Calcular fecha_renovacion restando el intervalo al vencimiento
+    var iv=getInterval(meldVal);
+    var fv=new Date(fechaVenc);
+    fv.setDate(fv.getDate()-iv.days);
+    fechaRenovacion=fv.toISOString().split('T')[0];
+  } else if(fechaLab){
+    fechaRenovacion=fechaLab;
+  }
   var params={apellido:ap,nombre:nm,dni:dni,grupo:grupo,meld:meld,
     spa_meld:parseInt(document.getElementById('f-spa-meld').value)||meld,
     ingreso:document.getElementById('f-ingreso').value,
@@ -1348,7 +1396,8 @@ function savePatient(){
     diagnostico:document.getElementById('f-diag').value,
     tel:document.getElementById('f-tel').value.trim(),
     email:document.getElementById('f-email').value.trim(),
-    obs:document.getElementById('f-obs').value.trim()};
+    obs:document.getElementById('f-obs').value.trim(),
+    fecha_renovacion_override: fechaRenovacion};
   if(editId){
     // Optimistic update para edición
     var pt=patients.find(function(p){return p.id===editId;});
@@ -1369,7 +1418,7 @@ function savePatient(){
       .then(function(data){
         params.id=data.id||('PAC-LOCAL-'+Date.now());
         params.estado='Activo';params.baja_motivo=null;params.fecha_vencio=null;
-        params.fecha_renovacion=todayStr();
+        params.fecha_renovacion=params.fecha_renovacion_override||todayStr();
         patients.push(params);
         closePatient();renderAll();
         showToast('Paciente dado de alta','ok');
